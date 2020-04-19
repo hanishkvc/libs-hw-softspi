@@ -10,6 +10,7 @@
  * the PINMUX for Soft SPI GPIOs
  */
 
+#define PMUX_MODE_GIO
 #define PMUX_DIR_IN
 #define PMUX_DIR_OUT
 #define PMUX_DIR_IO
@@ -29,15 +30,17 @@
 #define CS_INACTIVE 1
 
 
+#define FUNC_IRQ_SAVE_DISABLE
+#define FUNC_IRQ_RESTORE
 /* 
  * Define the delay function
  * And define the below mentioned delays as required for the specified delay function
  */
 
-#define DELAYFUNC
-#define DELAY_AFTER_CS 100
-#define DELAY_AFTER_BYTE 100
-#define DELAY_BETWEEN_BITS 50
+#define FUNC_DELAY usleep
+#define DELAY_AFTER_CS 1000
+#define DELAY_AFTER_BYTE 1000
+#define DELAY_BETWEEN_BITS 500
 
 /* Define the SPI mode as required */
 #define SPI_CPOL 0
@@ -57,10 +60,10 @@ void setpinmux(int gio, int flags);
 
 void sspi_init()
 {
-  setpinmux(GIO_CLK, PMUX_DIR_OUT | PMUX_PULL_UP);
-  setpinmux(GIO_CS, PMUX_DIR_OUT | PMUX_PULL_UP); // Assuming Slave select is Active low else PMUX_PULL_DOWN
-  setpinmux(GIO_MOSI, PMUX_DIR_OUT | PMUX_PULL_UP);
-  setpinmux(GIO_MISO, PMUX_DIR_IN | PMUX_PULL_UP); // Should result in input being 1 when Slave/Spi device is not driving their output
+  setpinmux(GIO_CLK, PMUX_MODE_GIO | PMUX_DIR_OUT | PMUX_PULL_UP);
+  setpinmux(GIO_CS, PMUX_MODE_GIO | PMUX_DIR_OUT | PMUX_PULL_UP); // Assuming Slave select is Active low else PMUX_PULL_DOWN
+  setpinmux(GIO_MOSI, PMUX_MODE_GIO | PMUX_DIR_OUT | PMUX_PULL_UP);
+  setpinmux(GIO_MISO, PMUX_MODE_GIO | PMUX_DIR_IN | PMUX_PULL_UP); // Should result in input being 1 when Slave/Spi device is not driving their output
 }
 
 /* Full duplex upto 32bit IO, MSb first
@@ -75,9 +78,12 @@ void sspi_fd_io32(U32 out, U32 *in, int maxbits)
 {
   U32 tIn;
   int tInBit;
+  int iFlag;
+
+  FUNC_IRQ_SAVE_DISABLE(&iFlag);
 
   setgio(GIO_CS, CS_ACTIVE); // Select the slave
-  DELAYFUNC(DELAY_AFTER_CS);
+  FUNC_DELAY(DELAY_AFTER_CS);
   tIn = 0;
   for(i = 0; i < maxbits; i++) {
     if(SPI_CPHA == 0) {
@@ -86,13 +92,13 @@ void sspi_fd_io32(U32 out, U32 *in, int maxbits)
         setgio(GIO_MOSI, 1);
       else
         setgio(GIO_MOSI, 0);
-      DELAYFUNC(DELAY_BETWEEN_BITS*2);
+      FUNC_DELAY(DELAY_BETWEEN_BITS*2);
 
       if(SPI_CPOL == 0)
         setgio(GIO_CLK, 1);
       else
         setgio(GIO_CLK, 0);
-      DELAYFUNC(DELAY_BETWEEN_BITS);
+      FUNC_DELAY(DELAY_BETWEEN_BITS);
 
       tIn <<= 1;
       tInBit = getgio(GIO_MISO);
@@ -101,13 +107,13 @@ void sspi_fd_io32(U32 out, U32 *in, int maxbits)
       } else {
         tIn &= 0xFFFFFFFE;
       }
-      DELAYFUNC(DELAY_BETWEEN_BITS);
+      FUNC_DELAY(DELAY_BETWEEN_BITS);
 
       if(SPI_CPOL == 0)
         setgio(GIO_CLK, 0);
       else
         setgio(GIO_CLK, 1);
-      //DELAYFUNC(DELAY_BETWEEN_BITS);
+      //FUNC_DELAY(DELAY_BETWEEN_BITS);
 
 
     } else {
@@ -121,7 +127,7 @@ void sspi_fd_io32(U32 out, U32 *in, int maxbits)
         setgio(GIO_MOSI, 1);
       else
         setgio(GIO_MOSI, 0);
-      DELAYFUNC(DELAY_BETWEEN_BITS*2);
+      FUNC_DELAY(DELAY_BETWEEN_BITS*2);
 
 
       if(SPI_CPOL == 0)
@@ -135,14 +141,19 @@ void sspi_fd_io32(U32 out, U32 *in, int maxbits)
       } else {
         tIn &= 0xFFFFFFFE;
       }
-      DELAYFUNC(DELAY_BETWEEN_BITS*2);
+      FUNC_DELAY(DELAY_BETWEEN_BITS*2);
 
     }
 
     out <<= 1;
     if((i%8 == 0) && (i != 0))
-      DELAYFUNC(DELAY_AFTER_BYTE);
+      FUNC_DELAY(DELAY_AFTER_BYTE);
   }
+  FUNC_DELAY(DELAY_AFTER_BYTE);
+  setgio(GIO_CS, CS_INACTIVE); // DESelect the slave
+
   *in = tIn;
+
+  FUNC_IRQ_RESTORE(&iFlag);
 }
 
